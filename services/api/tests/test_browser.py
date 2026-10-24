@@ -15,9 +15,8 @@ from services.api.app import ROOT
 
 @pytest.fixture(scope='module')
 def browser_app():
+    # Prefer Kali's system Chromium; CI uses Playwright's installed Chromium.
     executable = shutil.which('chromium')
-    if not executable:
-        pytest.fail('Chromium missing: install chromium or set up the documented test environment.')
     with socket.socket() as sock:
         sock.bind(('127.0.0.1',0))
         port = sock.getsockname()[1]
@@ -36,7 +35,7 @@ def browser_app():
         else:
             pytest.fail('Local test server did not become ready.')
         with sync_playwright() as playwright:
-            browser = playwright.chromium.launch(executable_path=executable, headless=True, args=['--no-sandbox'])
+            browser = playwright.chromium.launch(executable_path=executable or None, headless=True, args=['--no-sandbox'])
             yield browser,url
             browser.close()
     finally:
