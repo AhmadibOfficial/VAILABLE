@@ -1,0 +1,15 @@
+.vailable/
+__pycache__/
+*.py[cod]
+node_modules/
+.next/
+dist/
+build/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+.DS_Store

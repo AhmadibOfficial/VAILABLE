@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "product": "VAILABLE",
+  "tasks": [
+    {
+      "id": "VAI-001", "title": "Original web UI, tool registry and merge-PDF foundation", "depends_on": [],
+      "objectives": ["Create accessible responsive homepage and searchable tool catalog", "Implement typed tool definitions for all planned capabilities with accurate coming-soon labels", "Implement a real merge-PDF endpoint with page-order preservation and bounded file limits", "Add unit, integration and failure-case tests, no placeholder success UI"],
+      "acceptance": ["Homepage and catalog work on mobile and desktop", "Merge processes real PDFs and tests page order", "Invalid/encrypted PDFs fail safely", "No fake implementation claims"]
+    },
+    {
+      "id": "VAI-002", "title": "Split PDF and rotate PDF", "depends_on": ["VAI-001"],
+      "objectives": ["Split selected page ranges to separate PDFs", "Rotate selected pages by 90-degree multiples", "Preserve document structure where supported", "Add API tests and UI error feedback"],
+      "acceptance": ["Real outputs validated", "Malformed ranges rejected", "Resource and page-count limits tested"]
+    },
+    {
+      "id": "VAI-003", "title": "Document upload safety and job lifecycle", "depends_on": ["VAI-002"],
+      "objectives": ["Add document magic-byte and size validation", "Implement bounded isolated job execution", "Implement deterministic cleanup of temporary inputs/outputs", "Add job state tracking and cross-job access tests"],
+      "acceptance": ["Cross-tenant reads denied", "Cleanup tested", "Job limits and failures observable without logging content"]
+    },
+    {
+      "id": "VAI-004", "title": "Image/PDF conversion and watermark", "depends_on": ["VAI-003"],
+      "objectives": ["Build JPG/PNG to PDF and PDF to JPG", "Add controlled text watermark", "Verify page dimensions and correct output images"],
+      "acceptance": ["Real conversions tested", "Watermark output visible and recoverable", "Corrupted inputs rejected"]
+    },
+    {
+      "id": "VAI-005", "title": "Compress PDF and document protection", "depends_on": ["VAI-004"],
+      "objectives": ["Add lossless/best-effort compression with size report", "Add password-based PDF protection", "Add authorized password-assisted PDF unlock"],
+      "acceptance": ["Compression reports real before-after size", "Wrong password fails", "Encryption never bypassed without authorization"]
+    },
+    {
+      "id": "VAI-006", "title": "Accounts and verified email flow", "depends_on": ["VAI-005"],
+      "objectives": ["Add email-based signup and login", "Add authorization boundaries and file isolation", "Add metadata-only job history"],
+      "acceptance": ["Auth and role tests pass", "No secrets in logs", "Guest data is temporary"]
+    },
+    {
+      "id": "VAI-007", "title": "Office conversion and OCR", "depends_on": ["VAI-006"],
+      "objectives": ["Create isolated Office-to-PDF conversion workers", "Implement PDF-to-DOCX best-effort conversion", "Implement OCR PDF with real searchable text layer"],
+      "acceptance": ["License review documented", "Document conversion fidelity tests pass", "Workers cannot reach internal network"]
+    },
+    {
+      "id": "VAI-008", "title": "Edit, forms and safe redaction", "depends_on": ["VAI-007"],
+      "objectives": ["Add supported annotation and text overlay editing", "Implement permanent PDF redaction", "Add interactive form creation and fill"],
+      "acceptance": ["Redacted text cannot be extracted from resulting PDF", "Signature claims not exaggerated", "Form fields round-trip"]
+    },
+    {
+      "id": "VAI-009", "title": "PDF intelligence and translation", "depends_on": ["VAI-008"],
+      "objectives": ["Add PDF to Markdown", "Add source-grounded summarization and question-answering", "Add opt-in translation with layout-quality disclosure"],
+      "acceptance": ["Summaries have source references", "User consent recorded", "No documents sent to AI by default"]
+    },
+    {
+      "id": "VAI-010", "title": "Workflow builder and batch jobs", "depends_on": ["VAI-009"],
+      "objectives": ["Implement composable tool workflows", "Add queue and bounded retries", "Add job reports and editable templates"],
+      "acceptance": ["Idempotency tests", "Failure recovery tests", "Per-user resource limits"]
+    },
+    {
+      "id": "VAI-011", "title": "Mobile and desktop client foundations", "depends_on": ["VAI-010"],
+      "objectives": ["Build Flutter Android and iOS shells", "Design offline desktop processing boundary", "Add scan UI prototype"],
+      "acceptance": ["Android build gate documented", "No undeclared permissions", "Offline capability claims tested"]
+    },
+    {
+      "id": "VAI-012", "title": "Business workspaces and release hardening", "depends_on": ["VAI-011"],
+      "objectives": ["Team roles and API scopes", "Auditable signature-request design", "Release readiness and legal/license checklist"],
+      "acceptance": ["Role separation tests", "Staged release checks", "No external deployment without explicit approval"]
+    }
+  ]
+}
