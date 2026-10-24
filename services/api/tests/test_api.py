@@ -240,3 +240,28 @@ def test_ten_files_preserve_order():
     response = upload(*(pdf((str(i),)) for i in range(10)))
     assert response.status_code == 200
     assert texts(response.content) == [str(i) for i in range(10)]
+
+
+def test_security_headers_on_html_api_assets_and_errors():
+    for path in ('/', '/api/tools', '/assets/app.js', '/assets/style.css', '/assets/package.json'):
+        response = client.get(path)
+        assert response.headers['cache-control'] == 'no-store'
+        assert response.headers['x-content-type-options'] == 'nosniff'
+        assert response.headers['x-frame-options'] == 'DENY'
+        assert response.headers['cross-origin-resource-policy'] == 'same-origin'
+        assert "frame-ancestors 'none'" in response.headers['content-security-policy']
+        assert 'geolocation=()' in response.headers['permissions-policy']
+
+
+def test_preflight_large_declared_request_rejected_without_pdf_processing():
+    response = client.post('/api/merge', content=b'empty',
+        headers={'content-length': str(api.MAX_BODY + 1)})
+    assert response.status_code == 413
+    assert 'content-disposition' not in response.headers
+
+
+def test_no_public_source_or_docs_routes():
+    for path in ('/assets/package.json', '/assets/package-lock.json',
+                 '/assets/shell.html', '/assets/tests/test_frontend.py',
+                 '/docs', '/redoc', '/openapi.json'):
+        assert client.get(path).status_code == 404, path

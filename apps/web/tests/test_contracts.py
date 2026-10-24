@@ -70,7 +70,18 @@ def test_merge_page_loads_assets_and_accessible_controls():
     assert 'hidden' in document.by_id('download')
     assert ('script', {'src': '/assets/app.js', 'defer': None}) in document.elements
     assert ('link', {'rel': 'stylesheet', 'href': '/assets/style.css'}) in document.elements
-    assets = next(route for route in app.routes if route.path == '/assets')
-    assert Path(assets.app.directory) == WEB
+    assert any(route.path == '/assets/{name}' for route in app.routes)
     for filename in ('app.js', 'style.css'):
-        assert (WEB / filename).read_text().strip()
+        contents = (WEB / filename).read_text()
+        response = client.get('/assets/' + filename)
+        assert response.status_code == 200
+        assert response.text == contents
+
+
+def test_nonpublic_web_files_are_not_served():
+    for path in ('package.json', 'package-lock.json', 'README.md',
+                 'shell.html', 'tests/test_frontend.py', 'tests/test_contracts.py'):
+        response = client.get('/assets/' + path)
+        assert response.status_code == 404, path
+    for path in ('/docs', '/redoc', '/openapi.json'):
+        assert client.get(path).status_code == 404, path

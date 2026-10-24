@@ -9,8 +9,7 @@ import threading
 import time
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, Response
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse, Response, FileResponse
 from starlette.datastructures import UploadFile
 from packages.tool_registry import TOOLS, serialized
 
@@ -20,15 +19,27 @@ MAX_FILE = 5 * 1024**2
 MAX_BODY = 20 * 1024**2
 PROCESS_SECONDS = 12
 SLOTS = threading.BoundedSemaphore(2)
-app = FastAPI(title='VAILABLE local foundation')
-app.mount('/assets', StaticFiles(directory=WEB), name='assets')
+app = FastAPI(title='VAILABLE local foundation', docs_url=None, redoc_url=None, openapi_url=None)
+# Serve only browser assets. A directory mount exposes package manifests and test code.
+PUBLIC_ASSETS = {'app.js': 'text/javascript', 'style.css': 'text/css'}
+
+
+@app.get('/assets/{name}', include_in_schema=False)
+async def public_asset(name: str):
+    media_type = PUBLIC_ASSETS.get(name)
+    if media_type is None:
+        raise HTTPException(404, 'Asset not found.')
+    return FileResponse(WEB / name, media_type=media_type)
+
 
 
 @app.middleware('http')
 async def security_headers(request, call_next):
     response = await call_next(request)
     response.headers.update({'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
-        'Referrer-Policy': 'no-referrer', 'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"})
+        'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY',
+        'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+        'Cross-Origin-Resource-Policy': 'same-origin', 'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"})
     return response
 
 
@@ -62,6 +73,17 @@ async def tool_page(slug: str):
 
 
 async def read_bounded(request):
+    # Reject obviously oversized uploads before consuming request-body memory.
+    advertised = request.headers.get('content-length')
+    if advertised is not None:
+        try:
+            declared = int(advertised)
+        except (ValueError, TypeError):
+            raise HTTPException(400, 'Invalid Content-Length.')
+        if declared < 0:
+            raise HTTPException(400, 'Invalid Content-Length.')
+        if declared > MAX_BODY:
+            raise HTTPException(413, 'Request exceeds 20 MiB.')
     body = bytearray()
     async for chunk in request.stream():
         body.extend(chunk)

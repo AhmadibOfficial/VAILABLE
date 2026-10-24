@@ -93,3 +93,18 @@ def test_browser_real_merge_order_and_failure(browser_app,tmp_path):
         expect(page.locator('#download')).to_be_hidden()
     finally:
         page.close()
+
+
+def test_browser_public_assets_allowlist(browser_app):
+    browser, url = browser_app
+    page = browser.new_page()
+    try:
+        page.goto(url + '/tools/merge-pdf')
+        assert page.request.get(url + '/assets/app.js').status == 200
+        assert page.request.get(url + '/assets/style.css').status == 200
+        for path in ('package.json', 'package-lock.json', 'shell.html',
+                     'tests/test_frontend.py'):
+            assert page.request.get(url + '/assets/' + path).status == 404
+        assert page.request.get(url + '/openapi.json').status == 404
+    finally:
+        page.close()
