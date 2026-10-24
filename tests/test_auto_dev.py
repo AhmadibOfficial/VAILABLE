@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 import unittest
 from scripts.auto_dev import next_task, safe_path, GateError, read_json, ROOT, vai001_artifacts
-from scripts.verify import discover_api_tests
+from scripts.verify import discover_api_tests, web_dependencies_required
 from tempfile import TemporaryDirectory
 
 
@@ -49,6 +49,41 @@ class WriteScopeTests(unittest.TestCase):
                      "services/api/cert.key", ".vailable/runs/output.log"]:
             with self.subTest(path=path):
                 self.assertFalse(safe_path(path))
+
+
+class WebManifestTests(unittest.TestCase):
+    def test_dependency_free_package_does_not_require_node_modules(self):
+        with TemporaryDirectory() as tmp:
+            web = Path(tmp)
+            (web / "package.json").write_text(json.dumps({
+                "name": "vailable-web", "private": True,
+                "scripts": {"test": "node --test test/*.test.mjs"},
+            }))
+            self.assertFalse(web_dependencies_required(web))
+
+    def test_dependency_based_package_needs_node_modules(self):
+        with TemporaryDirectory() as tmp:
+            web = Path(tmp)
+            (web / "package.json").write_text(json.dumps({
+                "name": "vailable-web", "private": True,
+                "scripts": {"test": "vitest run"},
+                "devDependencies": {"vitest": "^3.0.0"},
+            }))
+            self.assertTrue(web_dependencies_required(web))
+
+    def test_rejects_empty_test_command(self):
+        with TemporaryDirectory() as tmp:
+            web = Path(tmp)
+            (web / "package.json").write_text('{"name":"vailable-web","scripts":{}}')
+            with self.assertRaisesRegex(SystemExit, "test command"):
+                web_dependencies_required(web)
+
+    def test_rejects_invalid_json(self):
+        with TemporaryDirectory() as tmp:
+            web = Path(tmp)
+            (web / "package.json").write_text('{')
+            with self.assertRaisesRegex(SystemExit, "Invalid web"):
+                web_dependencies_required(web)
 
 
 class ArtifactReadinessTests(unittest.TestCase):
