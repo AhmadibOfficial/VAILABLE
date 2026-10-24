@@ -161,28 +161,39 @@ def check_publish_preflight() -> None:
     invoke("gh", "auth", "status")
 
 
-def perform(task: dict, base: str, publish: bool, timeout: int) -> None:
+def perform(task: dict, base: str, publish: bool, timeout: int, resume: bool = False) -> None:
     if not shutil.which("codex"):
         raise GateError("Codex CLI is missing. Install and sign in, then rerun")
     if publish:
         check_publish_preflight()
     branch = "agent/" + task["id"].lower()
-    if subprocess.run(["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"],
-                      cwd=ROOT, check=False, capture_output=True).returncode == 0:
-        raise GateError(f"Branch {branch} already exists. Review or merge it before continuing")
     runpath = STATE_DIR / "runs"
     runpath.mkdir(parents=True, exist_ok=True)
     worktree = STATE_DIR / "worktrees" / task["id"].lower()
-    if worktree.exists():
-        raise GateError(f"Worktree already exists, refusing to overwrite: {worktree}")
-    invoke("git", "worktree", "add", "-b", branch, str(worktree), base)
+    if resume:
+        if not worktree.is_dir() or worktree.is_symlink():
+            raise GateError("Expected existing task worktree missing or unsafe")
+        if invoke("git", "rev-parse", "--show-toplevel", cwd=worktree) != str(worktree):
+            raise GateError("Existing worktree location does not match expected path")
+        if invoke("git", "symbolic-ref", "--short", "HEAD", cwd=worktree) != branch:
+            raise GateError("Worktree is not on expected task branch")
+        invoke("git", "merge-base", "--is-ancestor", "HEAD", base, cwd=worktree)
+        # Base may have received runner-only maintenance commits after worktree creation.
+        working_changes(worktree)  # refuse protected, destructive or secret-like edits
+    else:
+        if subprocess.run(["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"],
+                          cwd=ROOT, check=False, capture_output=True).returncode == 0:
+            raise GateError(f"Branch {branch} already exists. Review or use --resume")
+        if worktree.exists() or worktree.is_symlink():
+            raise GateError(f"Worktree already exists, refusing to overwrite: {worktree}")
+        invoke("git", "worktree", "add", "-b", branch, str(worktree), base)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     log = runpath / f"{task['id']}-{stamp}.log"
     print(f"Running {task['id']} in isolated worktree: {worktree}", flush=True)
     try:
         with log.open("w", encoding="utf-8") as out:
             result = subprocess.run(
-                ["codex", "exec", "--sandbox", "workspace-write", "--ask-for-approval", "never", "-"],
+                ["codex", "--ask-for-approval", "never", "exec", "--sandbox", "workspace-write", "-"],
                 input=task_prompt(task), stdout=out, stderr=subprocess.STDOUT,
                 text=True, cwd=worktree, check=False, timeout=timeout,
             )
@@ -239,6 +250,7 @@ def main() -> int:
     parser.add_argument("command", choices=["status", "plan", "verify", "once"])
     parser.add_argument("--base", default="main", choices=["main", "develop"])
     parser.add_argument("--publish", action="store_true", help="Push and open a draft GitHub PR")
+    parser.add_argument("--resume", action="store_true", help="Resume preserved task worktree without deleting it")
     parser.add_argument("--timeout", type=int, default=2400)
     args = parser.parse_args()
     try:
@@ -260,8 +272,10 @@ def main() -> int:
             return 0
         if args.timeout < 120 or args.timeout > 7200:
             raise GateError("--timeout must be 120 to 7200 seconds")
+        if args.resume and args.command != "once":
+            raise GateError("--resume is only valid with once")
         safe_git_base(args.base)
-        perform(task, args.base, args.publish, args.timeout)
+        perform(task, args.base, args.publish, args.timeout, args.resume)
         return 0
     except (GateError, subprocess.CalledProcessError) as e:
         print(f"STOP: {e}", file=sys.stderr)
