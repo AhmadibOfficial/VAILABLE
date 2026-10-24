@@ -2,7 +2,9 @@
 import json
 from pathlib import Path
 import unittest
-from scripts.auto_dev import next_task, safe_path, GateError, read_json, ROOT
+from scripts.auto_dev import next_task, safe_path, GateError, read_json, ROOT, vai001_artifacts
+from scripts.verify import discover_api_tests
+from tempfile import TemporaryDirectory
 
 
 class TaskSelectionTests(unittest.TestCase):
@@ -47,6 +49,41 @@ class WriteScopeTests(unittest.TestCase):
                      "services/api/cert.key", ".vailable/runs/output.log"]:
             with self.subTest(path=path):
                 self.assertFalse(safe_path(path))
+
+
+class ArtifactReadinessTests(unittest.TestCase):
+    def test_accepts_root_level_api_tests(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "apps/web").mkdir(parents=True)
+            (root / "apps/web/package.json").write_text("{}")
+            (root / "services/api").mkdir(parents=True)
+            (root / "services/api/requirements.txt").write_text("pypdf>=5\n")
+            (root / "tests").mkdir()
+            (root / "tests/test_pdf_merge.py").write_text("def test_real_merge(): pass\n")
+            self.assertEqual(vai001_artifacts(root), discover_api_tests(root))
+
+    def test_rejects_autonomy_tests_only(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "apps/web").mkdir(parents=True)
+            (root / "apps/web/package.json").write_text("{}")
+            (root / "services/api").mkdir(parents=True)
+            (root / "services/api/requirements.txt").write_text("pypdf>=5\n")
+            (root / "tests").mkdir()
+            (root / "tests/test_auto_dev.py").write_text("pass\n")
+            with self.assertRaisesRegex(GateError, "No API/PDF"):
+                vai001_artifacts(root)
+
+    def test_reports_missing_manifest(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "apps/web").mkdir(parents=True)
+            (root / "apps/web/package.json").write_text("{}")
+            (root / "services/api/tests").mkdir(parents=True)
+            (root / "services/api/tests/test_merge.py").write_text("def test_pdf(): pass\n")
+            with self.assertRaisesRegex(GateError, "API manifest missing"):
+                vai001_artifacts(root)
 
 
 if __name__ == "__main__":

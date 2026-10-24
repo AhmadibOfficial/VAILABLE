@@ -161,8 +161,33 @@ def check_publish_preflight() -> None:
     invoke("gh", "auth", "status")
 
 
-def perform(task: dict, base: str, publish: bool, timeout: int, resume: bool = False) -> None:
-    if not shutil.which("codex"):
+def vai001_artifacts(worktree: Path) -> list[Path]:
+    """Fail-closed structural readiness check; support API tests in standard locations."""
+    problems = []
+    if not (worktree / "apps/web/package.json").is_file():
+        problems.append("apps/web/package.json is missing")
+    api = worktree / "services/api"
+    if not any((api / filename).is_file() for filename in
+               ("pyproject.toml", "requirements.txt", "requirements-dev.txt")):
+        problems.append("API manifest missing: services/api/{pyproject.toml,requirements.txt,requirements-dev.txt}")
+    tests = sorted((api / "tests").rglob("test_*.py")) if (api / "tests").is_dir() else []
+    root_tests = worktree / "tests"
+    if root_tests.is_dir():
+        tests += sorted(path for path in root_tests.rglob("test_*.py")
+                        if any(term in path.name.lower() for term in
+                               ("merge", "pdf", "api", "worker", "vai001", "vai_001")))
+    # Deliberately exclude the generic autonomy-runner tests as evidence of API tests.
+    tests = sorted(set(tests))
+    if not tests:
+        problems.append("No API/PDF test_*.py found in services/api/tests or suitable root tests/ files")
+    if problems:
+        raise GateError("VAI-001 not ready:\n - " + "\n - ".join(problems) +
+                        "\nExisting worktree preserved; add the missing real artifacts before finalizing")
+    return tests
+
+
+def perform(task: dict, base: str, publish: bool, timeout: int, resume: bool = False, finalize: bool = False) -> None:
+    if not finalize and not shutil.which("codex"):
         raise GateError("Codex CLI is missing. Install and sign in, then rerun")
     if publish:
         check_publish_preflight()
@@ -191,26 +216,26 @@ def perform(task: dict, base: str, publish: bool, timeout: int, resume: bool = F
     log = runpath / f"{task['id']}-{stamp}.log"
     print(f"Running {task['id']} in isolated worktree: {worktree}", flush=True)
     try:
-        with log.open("w", encoding="utf-8") as out:
-            result = subprocess.run(
-                ["codex", "--ask-for-approval", "never", "exec", "--sandbox", "workspace-write", "-"],
-                input=task_prompt(task), stdout=out, stderr=subprocess.STDOUT,
-                text=True, cwd=worktree, check=False, timeout=timeout,
-            )
-        if result.returncode:
-            raise GateError(f"Codex exited {result.returncode}; see {log}")
+        if finalize:
+            log.write_text("Finalization-only: preserving generated code; skipping Codex re-execution.\n", encoding="utf-8")
+        else:
+            with log.open("w", encoding="utf-8") as out:
+                result = subprocess.run(
+                    ["codex", "--ask-for-approval", "never", "exec", "--sandbox", "workspace-write", "-"],
+                    input=task_prompt(task), stdout=out, stderr=subprocess.STDOUT,
+                    text=True, cwd=worktree, check=False, timeout=timeout,
+                )
+            if result.returncode:
+                raise GateError(f"Codex exited {result.returncode}; see {log}")
         changes = working_changes(worktree)
         if not changes:
-            raise GateError(f"Agent did not change any allowed files; see {log}")
+            raise GateError(f"No uncommitted task changes to verify; see {log}")
         if task["id"] == "VAI-001":
-            web_manifest = worktree / "apps/web/package.json"
-            api = worktree / "services/api"
-            api_manifest = (api / "pyproject.toml").exists() or (api / "requirements.txt").exists()
-            api_tests = api / "tests"
-            if not web_manifest.is_file() or not api_manifest or not api_tests.is_dir() or not any(api_tests.rglob("test_*.py")):
-                raise GateError("VAI-001 requires a real web app, API dependency manifest and API test files")
+            vai001_artifacts(worktree)
         with log.open("a", encoding="utf-8") as out:
-            result = subprocess.run([sys.executable, "scripts/verify.py"],
+            # Always run the newest trusted verifier from main against the preserved worktree.
+            # The feature branch can predate verifier maintenance updates.
+            result = subprocess.run([sys.executable, str(ROOT / "scripts/verify.py"), "--root", str(worktree)],
                                     cwd=worktree, text=True, stdout=out,
                                     stderr=subprocess.STDOUT, timeout=900)
         if result.returncode:
@@ -251,6 +276,7 @@ def main() -> int:
     parser.add_argument("--base", default="main", choices=["main", "develop"])
     parser.add_argument("--publish", action="store_true", help="Push and open a draft GitHub PR")
     parser.add_argument("--resume", action="store_true", help="Resume preserved task worktree without deleting it")
+    parser.add_argument("--finalize", action="store_true", help="Verify existing worktree without rerunning Codex; requires --resume")
     parser.add_argument("--timeout", type=int, default=2400)
     args = parser.parse_args()
     try:
@@ -274,8 +300,10 @@ def main() -> int:
             raise GateError("--timeout must be 120 to 7200 seconds")
         if args.resume and args.command != "once":
             raise GateError("--resume is only valid with once")
+        if args.finalize and (args.command != "once" or not args.resume):
+            raise GateError("--finalize requires once --resume")
         safe_git_base(args.base)
-        perform(task, args.base, args.publish, args.timeout, args.resume)
+        perform(task, args.base, args.publish, args.timeout, args.resume, args.finalize)
         return 0
     except (GateError, subprocess.CalledProcessError) as e:
         print(f"STOP: {e}", file=sys.stderr)
