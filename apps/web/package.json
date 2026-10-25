@@ -1,0 +1,15 @@
+{
+  "name": "@vailable/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "FastAPI-rendered HTML with vanilla browser JavaScript and CSS",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "dev": "cd ../.. && python -m uvicorn services.api.app:app --reload --host 127.0.0.1 --port 8000",
+    "start": "cd ../.. && python -m uvicorn services.api.app:app --host 127.0.0.1 --port 8000",
+    "lint": "node --check app.js",
+    "test": "cd ../.. && python -m pytest apps/web/tests services/api/tests/test_browser.py -q",
+    "test:contracts": "cd ../.. && python -m pytest apps/web/tests/test_contracts.py -q",
+    "test:api": "cd ../.. && python -m pytest services/api/tests/test_api.py -q"
+  }
+}
