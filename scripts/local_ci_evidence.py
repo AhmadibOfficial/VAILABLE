@@ -40,6 +40,18 @@ def private_write(path: Path, data: bytes) -> None:
         handle.write(data)
 
 
+def interpreter_path(value: Path) -> Path:
+    """Keep the venv executable path: resolve() follows its symlink to system Python."""
+    return value.expanduser().absolute()
+
+
+def verification_environment(python: Path) -> dict[str, str]:
+    """Ensure npm scripts invoking 'python' use the selected venv interpreter too."""
+    env = os.environ.copy()
+    env["PATH"] = str(python.parent) + os.pathsep + env.get("PATH", "")
+    return env
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="VAILABLE local-only verification evidence")
     parser.add_argument("--project", type=Path, required=True)
@@ -50,12 +62,12 @@ def main() -> int:
     parser.add_argument("--expected-branch", default="agent/vai-001")
     args = parser.parse_args()
 
-    project, verifier, python = (value.resolve() for value in
-                                 (args.project, args.verifier, args.python))
+    project, verifier = args.project.resolve(), args.verifier.resolve()
+    python = interpreter_path(args.python)
     try:
         validate_project(project)
-        if not verifier.is_file() or not python.is_file():
-            raise ValueError("Verifier or Python interpreter missing")
+        if not verifier.is_file() or not python.is_file() or not os.access(python, os.X_OK):
+            raise ValueError("Verifier or executable Python interpreter missing")
         if Path(git(project, "rev-parse", "--show-toplevel")).resolve() != project:
             raise ValueError("Project is not its own Git worktree")
         branch = git(project, "branch", "--show-current")
@@ -76,10 +88,11 @@ def main() -> int:
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     stem = f"VAI001-{commit[:12]}-{timestamp}"
     command = [str(python), str(verifier), "--root", str(project)]
-    print(f"Running local tests for {commit[:12]} on {branch}...", flush=True)
+    print(f"Running local tests for {commit[:12]} on {branch} using {python}...", flush=True)
     try:
         run = subprocess.run(command, cwd=project, stdout=subprocess.PIPE,
-                             stderr=subprocess.STDOUT, timeout=1200, check=False)
+                             stderr=subprocess.STDOUT, timeout=1200, check=False,
+                             env=verification_environment(python))
         log_data = run.stdout
         result_code = run.returncode
     except subprocess.TimeoutExpired as error:
