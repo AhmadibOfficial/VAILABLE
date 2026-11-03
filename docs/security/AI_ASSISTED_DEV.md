@@ -4,7 +4,7 @@
 
 ## Secrets and confidential data
 - Use synthetic PDFs and schemas only. Do not send personal information, client documents, source secrets, production infrastructure addresses, sensitive stack traces or raw logs to models.
-- Manually sanitize prompts and logs; pattern scanners do not guarantee detection of all secrets.
+- Manually sanitize prompts and logs; pattern scanners do not guarantee detection of all secrets. Before sharing a run log, use `python3 scripts/sanitize_logs.py .vailable/runs/<filename>.log` and inspect the output. The automation stores restricted-permission (0700 directory / 0600 file) locally sanitized logs, but cannot ensure all sensitive details are removed.
 - .gitignore prevents tracking ignored files, **not filesystem reads**. Do not confuse agent instructions with access control.
 - Verify the chosen AI provider's actual contract, retention/training settings, data processing terms and opt-out policy before sharing confidential material. No unconditional zero-training/zero-retention claim is made.
 

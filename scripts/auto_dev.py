@@ -200,13 +200,16 @@ def perform(task: dict, base: str, publish: bool, timeout: int) -> None:
                       cwd=ROOT, check=False, capture_output=True).returncode == 0:
         raise GateError(f"Branch {branch} already exists. Review or merge it before continuing")
     runpath = STATE_DIR / "runs"
-    runpath.mkdir(parents=True, exist_ok=True)
+    runpath.mkdir(mode=0o700, parents=True, exist_ok=True)
+    os.chmod(runpath, 0o700)
     worktree = STATE_DIR / "worktrees" / task["id"].lower()
     if worktree.exists():
         raise GateError(f"Worktree already exists, refusing to overwrite: {worktree}")
     invoke("git", "worktree", "add", "-b", branch, str(worktree), base)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     log = runpath / f"{task['id']}-{stamp}.log"
+    log.touch(mode=0o600, exist_ok=False)
+    os.chmod(log, 0o600)
     print(f"Running {task['id']} in isolated worktree: {worktree}", flush=True)
     try:
         with log.open("w", encoding="utf-8") as out:
@@ -216,6 +219,10 @@ def perform(task: dict, base: str, publish: bool, timeout: int) -> None:
                 text=True, cwd=worktree, check=False, timeout=timeout,
                 env=restricted_agent_environment(),
             )
+        scrub = subprocess.run([sys.executable, str(ROOT / "scripts/sanitize_logs.py"),
+                                str(log), "--in-place"], capture_output=True, text=True, check=False)
+        if scrub.returncode:
+            raise GateError("Codex log could not be sanitized; preserve private log and stop")
         if result.returncode:
             raise GateError(f"Codex exited {result.returncode}; see {log}")
         changes = working_changes(worktree)
