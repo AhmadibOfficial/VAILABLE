@@ -30,8 +30,10 @@ def main() -> int:
     parser.add_argument("log", type=Path)
     parser.add_argument("--in-place", action="store_true")
     args = parser.parse_args()
+    if args.log.is_symlink():
+        parser.error("Refusing symlinked logs")
     path = args.log.resolve()
-    if not path.is_file() or path.is_symlink():
+    if not path.is_file():
         parser.error("Must be an existing regular log file")
     content = sanitize(path.read_text(encoding="utf-8", errors="replace"))
     if args.in_place:

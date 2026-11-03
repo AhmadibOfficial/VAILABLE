@@ -212,17 +212,20 @@ def perform(task: dict, base: str, publish: bool, timeout: int) -> None:
     os.chmod(log, 0o600)
     print(f"Running {task['id']} in isolated worktree: {worktree}", flush=True)
     try:
-        with log.open("w", encoding="utf-8") as out:
-            result = subprocess.run(
-                [str(wrapper), "codex", "exec", "--sandbox", "workspace-write", "--ask-for-approval", "never", "-"],
-                input=task_prompt(task), stdout=out, stderr=subprocess.STDOUT,
-                text=True, cwd=worktree, check=False, timeout=timeout,
-                env=restricted_agent_environment(),
-            )
-        scrub = subprocess.run([sys.executable, str(ROOT / "scripts/sanitize_logs.py"),
-                                str(log), "--in-place"], capture_output=True, text=True, check=False)
-        if scrub.returncode:
-            raise GateError("Codex log could not be sanitized; preserve private log and stop")
+        try:
+            with log.open("w", encoding="utf-8") as out:
+                result = subprocess.run(
+                    [str(wrapper), "codex", "exec", "--sandbox", "workspace-write", "--ask-for-approval", "never", "-"],
+                    input=task_prompt(task), stdout=out, stderr=subprocess.STDOUT,
+                    text=True, cwd=worktree, check=False, timeout=timeout,
+                    env=restricted_agent_environment(),
+                )
+        finally:
+            # Run even after timeout/crash; close the raw log before sanitizing.
+            scrub = subprocess.run([sys.executable, str(ROOT / "scripts/sanitize_logs.py"),
+                                    str(log), "--in-place"], capture_output=True, text=True, check=False)
+            if scrub.returncode:
+                raise GateError("Codex log could not be sanitized; preserve private log and stop")
         if result.returncode:
             raise GateError(f"Codex exited {result.returncode}; see {log}")
         changes = working_changes(worktree)
