@@ -15,7 +15,7 @@
 - Codex workspace-write and isolated Git worktrees alone are **insufficient** for host read isolation.
 
 ## Git, dependencies and review
-1. Vet and install the official Gitleaks v8 executable, then run: sh scripts/install_security_hooks.sh
+1. Vet and install the official Gitleaks v8 executable, then run: sh scripts/install_security_hooks.sh (run in each approved worktree; config is per-worktree)
 2. Verify tracked/staged content: python3 scripts/security_gate.py --tracked (or --staged).
 3. Verify direct pinned dependencies: python3 scripts/dependency_review.py.
 4. Inspect each new package's spelling, registry publisher, repository, licenses, advisories, signatures/provenance when available and transitive graph. Update engineering/DEPENDENCY_APPROVALS.json only after human review.
