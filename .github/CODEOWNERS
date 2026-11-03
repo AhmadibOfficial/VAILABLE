@@ -1,0 +1,5 @@
+# Assign code owner for notification; enforce independent review in Rulesets.
+* @AhmadibOfficial
+.github/ @AhmadibOfficial
+engineering/ @AhmadibOfficial
+scripts/ @AhmadibOfficial

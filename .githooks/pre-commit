@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+cd "$(git rev-parse --show-toplevel)"
+python3 scripts/security_gate.py --staged
+python3 scripts/dependency_review.py
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo 'BLOCK: install reviewed Gitleaks v8 before committing.' >&2
+  exit 1
+fi
+gitleaks git --staged --redact --no-banner

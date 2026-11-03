@@ -20,3 +20,11 @@
 
 ## Required reporting
 Each draft PR should describe what changed, tests run, remaining risks, and any licensing or fidelity limits.
+
+## Additional AI-assisted confidentiality gates
+- Follow AGENTS.md and docs/security/AI_ASSISTED_DEV.md; use only synthetic data and narrow task-scoped context.
+- Isolated Git worktrees, .gitignore and Codex workspace-write do not enforce read isolation. Refuse agent execution without a reviewed external OS/container wrapper.
+- Strip ambient cloud/token environment variables and use dedicated HOME/CODEX_HOME.
+- Scan staged files for secrets and unapproved dependencies before agent commits. Install Gitleaks pre-commit enforcement.
+- Never waive CI or independent AppSec review, self-approve changes, or give agents production credentials or deployment pathways.
+- Verify provider confidentiality agreements before making training/retention claims.

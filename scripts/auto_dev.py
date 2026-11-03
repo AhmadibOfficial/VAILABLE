@@ -26,6 +26,8 @@ PROTECTED = {
     "engineering/ROADMAP.json", "engineering/PROGRESS.json",
     "engineering/AUTONOMY_POLICY.md", "scripts/auto_dev.py",
     "scripts/verify.py", "docs/security/THREAT_MODEL.md",
+    "scripts/security_gate.py", "scripts/dependency_review.py",
+    "engineering/DEPENDENCY_APPROVALS.json", "docs/security/AI_ASSISTED_DEV.md",
 }
 BAD_PARTS = {".git", ".vailable", "node_modules", "__pycache__", ".next"}
 SECRET_RE = re.compile(
@@ -125,7 +127,7 @@ def task_prompt(task: dict) -> str:
 Complete exactly task {task['id']}: {task['title']}.
 Objectives: {json.dumps(task['objectives'], ensure_ascii=False)}
 Acceptance: {json.dumps(task['acceptance'], ensure_ascii=False)}
-Read docs/product/BLUEPRINT.md, engineering/AUTONOMY_POLICY.md and docs/security/THREAT_MODEL.md first.
+Read only task-relevant sections of docs/product/BLUEPRINT.md and necessary security/policy context. Never index unrelated files, logs, personal data or secrets.
 You are inside a task-specific git worktree. Modify this worktree only.
 Implement real, production-minded code and deterministic tests using synthetic fixtures.
 Keep every unimplemented feature visibly marked Coming Soon. Do not fake success.
@@ -161,9 +163,36 @@ def check_publish_preflight() -> None:
     invoke("gh", "auth", "status")
 
 
+def isolated_agent_wrapper() -> Path:
+    configured = os.environ.get("VAILABLE_AGENT_WRAPPER", "")
+    if not configured:
+        raise GateError("AI execution blocked until a reviewed OS/container isolation wrapper is configured. Git worktree and workspace-write do not enforce read isolation.")
+    wrapper = Path(configured).expanduser()
+    if not wrapper.is_absolute() or not wrapper.is_file() or not os.access(wrapper, os.X_OK):
+        raise GateError("VAILABLE_AGENT_WRAPPER must be an absolute, executable file")
+    if wrapper.resolve().is_relative_to(ROOT):
+        raise GateError("Isolation wrapper must be installed outside the project")
+    return wrapper.resolve()
+
+
+def restricted_agent_environment() -> dict[str, str]:
+    home = STATE_DIR / "agent-home"
+    home.mkdir(parents=True, mode=0o700, exist_ok=True)
+    os.chmod(home, 0o700)
+    codex_home = home / ".codex"
+    codex_home.mkdir(mode=0o700, exist_ok=True)
+    os.chmod(codex_home, 0o700)
+    return {"PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+            "HOME": str(home), "CODEX_HOME": str(codex_home),
+            "LANG": os.environ.get("LANG", "C.UTF-8")}
+
+
 def perform(task: dict, base: str, publish: bool, timeout: int) -> None:
     if not shutil.which("codex"):
         raise GateError("Codex CLI is missing. Install and sign in, then rerun")
+    wrapper = isolated_agent_wrapper()
+    subprocess.run([sys.executable, "scripts/security_gate.py", "--tracked"], cwd=ROOT, check=True)
+    subprocess.run([sys.executable, "scripts/dependency_review.py"], cwd=ROOT, check=True)
     if publish:
         check_publish_preflight()
     branch = "agent/" + task["id"].lower()
@@ -182,9 +211,10 @@ def perform(task: dict, base: str, publish: bool, timeout: int) -> None:
     try:
         with log.open("w", encoding="utf-8") as out:
             result = subprocess.run(
-                ["codex", "exec", "--sandbox", "workspace-write", "--ask-for-approval", "never", "-"],
+                [str(wrapper), "codex", "exec", "--sandbox", "workspace-write", "--ask-for-approval", "never", "-"],
                 input=task_prompt(task), stdout=out, stderr=subprocess.STDOUT,
                 text=True, cwd=worktree, check=False, timeout=timeout,
+                env=restricted_agent_environment(),
             )
         if result.returncode:
             raise GateError(f"Codex exited {result.returncode}; see {log}")
@@ -211,6 +241,8 @@ def perform(task: dict, base: str, publish: bool, timeout: int) -> None:
         changes = working_changes(worktree, allow_progress=True)
         invoke("git", "add", "--", *changes, cwd=worktree)
         invoke("git", "diff", "--cached", "--check", cwd=worktree)
+        invoke(sys.executable, "scripts/security_gate.py", "--staged", cwd=worktree)
+        invoke(sys.executable, "scripts/dependency_review.py", cwd=worktree)
         diff = invoke("git", "diff", "--cached", "--unified=0", cwd=worktree)
         for line in diff.splitlines():
             if line.startswith("+") and not line.startswith("+++") and SECRET_RE.search(line):
