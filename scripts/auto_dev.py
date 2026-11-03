@@ -13,6 +13,7 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import shutil
+import stat
 import subprocess
 import sys
 
@@ -168,8 +169,11 @@ def isolated_agent_wrapper() -> Path:
     if not configured:
         raise GateError("AI execution blocked until a reviewed OS/container isolation wrapper is configured. Git worktree and workspace-write do not enforce read isolation.")
     wrapper = Path(configured).expanduser()
-    if not wrapper.is_absolute() or not wrapper.is_file() or not os.access(wrapper, os.X_OK):
-        raise GateError("VAILABLE_AGENT_WRAPPER must be an absolute, executable file")
+    if not wrapper.is_absolute() or wrapper.is_symlink() or not wrapper.is_file() or not os.access(wrapper, os.X_OK):
+        raise GateError("VAILABLE_AGENT_WRAPPER must be an absolute, non-symlink executable file")
+    info = wrapper.stat()
+    if info.st_uid not in {os.getuid(), 0} or stat.S_IMODE(info.st_mode) & 0o022:
+        raise GateError("Isolation wrapper must be owned by this user/root and not group/world-writable")
     if wrapper.resolve().is_relative_to(ROOT):
         raise GateError("Isolation wrapper must be installed outside the project")
     return wrapper.resolve()

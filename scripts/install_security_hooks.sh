@@ -8,5 +8,8 @@ fi
 # Git config is normally shared across linked worktrees; keep hooks per worktree.
 git config --local extensions.worktreeConfig true
 git config --worktree core.hooksPath .githooks
-chmod u+x .githooks/pre-commit
-echo 'Installed repository-local confidentiality, dependency and Gitleaks pre-commit gates.'
+if ! test -x .githooks/pre-commit; then
+  echo 'BLOCK: pre-commit hook is not executable; restore its Git mode (100755).' >&2
+  exit 1
+fi
+echo 'Installed worktree-local confidentiality, dependency and Gitleaks pre-commit gates.'

@@ -57,3 +57,20 @@ jobs:
         run: python -m bandit -q -r services/api packages scripts -ll -ii
       - name: Python dependency advisories
         run: python -m pip_audit -r services/api/requirements-dev.txt
+
+  secrets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Gitleaks Git history and PR secret scanning
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: "false"
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"

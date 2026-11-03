@@ -29,3 +29,9 @@
 - The repository was observed as **public**. Confirm intended visibility; later changing it to private does not undo earlier exposure.
 - The PDF worker still requires independently verified filesystem/network isolation before accepting untrusted public uploads.
 - No merge, deployment or dependent VAI-002 milestone is approved by this document.
+
+## Additional enforceable checks in this batch
+- The agent wrapper path must be an absolute regular executable **not a symlink**, owned by the user/root and not group/world writable. This prevents trivial unsafe launchers but **does not certify container/VM isolation**; an independent reviewer must approve the wrapper.
+- CI has a dedicated Gitleaks v3 job scanning Git history on push/PR. The job uses read-only permissions, fetches Git history, and disables automatic PR comments/artifact uploads to avoid redistributing sensitive findings. CI is still blocked until account Actions billing is restored.
+- The `.githooks/pre-commit` script is tracked with executable file mode and the installer refuses to rewrite file permissions. Hooks must be installed locally in each approved worktree and cannot prevent GitHub API commits; CI and reviewer gates remain essential.
+- New external actions, including Gitleaks, are additional supply-chain dependencies. Their exact source, version and third-party permissions must be independently vetted and SHA-pinned before final merge approval. No vendor contractual confidentiality terms have been verified on the user's behalf.

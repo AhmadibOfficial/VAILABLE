@@ -1,5 +1,7 @@
 """Synthetic confidentiality and agent boundary tests."""
 import os
+from pathlib import Path
+import tempfile
 from unittest import TestCase
 from unittest.mock import patch
 from scripts.security_gate import risky_name, violations, MAX_SCAN_BYTES
@@ -26,6 +28,21 @@ class ConfidentialityTests(TestCase):
         with patch.dict(os.environ, {"VAILABLE_AGENT_WRAPPER": ""}):
             with self.assertRaises(GateError):
                 isolated_agent_wrapper()
+
+    def test_rejects_untrusted_isolation_wrapper(self):
+        with tempfile.TemporaryDirectory() as directory:
+            launcher = Path(directory) / "launcher"
+            launcher.write_text("#!/bin/sh\nexit 0\n")
+            launcher.chmod(0o777)
+            with patch.dict(os.environ, {"VAILABLE_AGENT_WRAPPER": str(launcher)}):
+                with self.assertRaisesRegex(GateError, "group/world-writable"):
+                    isolated_agent_wrapper()
+            launcher.chmod(0o700)
+            link = Path(directory) / "link"
+            link.symlink_to(launcher)
+            with patch.dict(os.environ, {"VAILABLE_AGENT_WRAPPER": str(link)}):
+                with self.assertRaisesRegex(GateError, "non-symlink"):
+                    isolated_agent_wrapper()
 
     def test_agent_does_not_inherit_ambient_cloud_keys(self):
         with patch.dict(os.environ, {"AWS_ACCESS_KEY_ID": "SYNTHETIC",
